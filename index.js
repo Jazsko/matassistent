@@ -2,6 +2,7 @@ const express = require("express");
 const vision = require("@google-cloud/vision");
 const cors = require("cors");
 require("dotenv").config();
+process.env.GOOGLE_APPLICATION_CREDENTIALS = "./service-account.json";
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
