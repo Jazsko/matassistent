@@ -12,7 +12,7 @@ const visionClient = new vision.ImageAnnotatorClient();
 
 const OpenAI = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-);
+
 
 app.post("/analyze", async (req, res) => {
   const base64Image = req.body.image?.split(",")[1];
