@@ -49,10 +49,10 @@ app.post("/analyze", async (req, res) => {
 
     const prompt = `Hva er næringsinnholdet per 100g for ${food.toLowerCase()}, inkludert kalorier, proteiner, fett, karbohydrater? Hvilke vitaminer og mineraler finnes i denne matvaren, og hva bidrar de med i kroppen?`;
 
-    const completion = await openai.createChatCompletion({
-      model: "gpt-4",
-      messages: [{ role: "user", content: prompt }]
-    });
+    const completion = await openai.chat.completions.create({
+  model: "gpt-4",
+  messages: [{ role: "user", content: prompt }]
+});
 
     console.log("✅ GPT-svar mottatt");
 
