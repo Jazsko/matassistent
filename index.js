@@ -41,6 +41,31 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: "Ingen fil lastet opp" });
     }
+    app.post("/text-analyze", async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: "Ingen tekst mottatt" });
+    }
+
+    const prompt = `
+Hva er næringsinnholdet per 100g for ${text.toLowerCase()}, inkludert kalorier, proteiner, fett, karbohydrater? 
+Hvilke vitaminer og mineraler finnes i denne matvaren, og hva bidrar de med i kroppen?
+Svar kort og punktvis.
+`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    res.json({ result: response.choices[0].message.content.trim() });
+  } catch (error) {
+    console.error("❌ Feil i tekst-analyse:", error);
+    res.status(500).json({ error: "Tekstanalyse mislyktes" });
+  }
+});
+
 
     const filePath = path.resolve(req.file.path);
     const [result] = await client.labelDetection(filePath);
