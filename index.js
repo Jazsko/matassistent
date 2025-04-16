@@ -1,7 +1,6 @@
 
 const express = require("express");
 const vision = require("@google-cloud/vision");
-const { Configuration, OpenAIApi } = require("openai");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -11,8 +10,8 @@ app.use(cors());
 
 const visionClient = new vision.ImageAnnotatorClient();
 
-const openai = new OpenAIApi(
-  new Configuration({ apiKey: process.env.OPENAI_API_KEY })
+const OpenAI = require("openai");
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 );
 
 app.post("/analyze", async (req, res) => {
