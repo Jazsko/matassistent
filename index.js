@@ -1,54 +1,76 @@
-
 const express = require("express");
 const vision = require("@google-cloud/vision");
 const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));
-app.use(cors());
+const PORT = process.env.PORT || 3001;
 
+app.use(cors());
+app.use(express.json({ limit: "10mb" }));
+
+// Google Vision Client
 const visionClient = new vision.ImageAnnotatorClient();
 
+// OpenAI-klient
 const OpenAI = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-
 app.post("/analyze", async (req, res) => {
   const base64Image = req.body.image?.split(",")[1];
-  if (!base64Image) return res.status(400).json({ error: "Ingen bilde mottatt" });
+  if (!base64Image) {
+    return res.status(400).json({ error: "Ingen bilde mottatt" });
+  }
 
   try {
+    // 🔍 Google Vision analyse
     const [result] = await visionClient.labelDetection({ image: { content: base64Image } });
     const labels = result.labelAnnotations.map(label => label.description);
-    const food = labels.find(l => l.match(/apple|banana|carrot|bread|salmon|rice|egg|potato|cheese/i)) || labels[0];
+    const food = labels.find(label =>
+      label.match(/apple|banana|carrot|bread|salmon|rice|egg|potato|cheese|chicken|milk|orange|avocado|broccoli/i)
+    ) || labels[0] || "ukjent matvare";
 
-    const prompt = `Hva er næringsinnholdet per 100g for ${food.toLowerCase()}, inkludert kalorier, proteiner, fett, karbohydrater? Hvilke vitaminer og mineraler finnes i denne matvaren, og hva bidrar de med i kroppen?`;
+    // 🧠 Prompt til ChatGPT
+    const prompt = `
+      Gi meg kun et gyldig JSON-objekt med følgende:
+      {
+        "food": "${food}",
+        "calories": (per 100g),
+        "protein": "...",
+        "fat": "...",
+        "carbs": "...",
+        "benefits": "...",
+        "vitaminsAndMinerals": [
+          { "name": "...", "function": "..." },
+          ...
+        ]
+      }
+    `;
 
-    const completion = await openai.createChatCompletion({
+    const completion = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [{ role: "user", content: prompt }]
     });
 
+    const parsed = JSON.parse(completion.choices[0].message.content);
+
     res.json({
-      food,
+      food: parsed.food,
       nutrition: {
-        calories: 89,
-        protein: "1.1g",
-        fat: "0.3g",
-        carbs: "22.8g",
-        benefits: completion.data.choices[0].message.content,
-        details: [
-          { name: "Vitamin B6", function: "Støtter immunforsvaret og hjernen" },
-          { name: "Kalium", function: "Regulerer blodtrykk og væskebalanse" }
-        ]
+        calories: parsed.calories,
+        protein: parsed.protein,
+        fat: parsed.fat,
+        carbs: parsed.carbs,
+        benefits: parsed.benefits,
+        details: parsed.vitaminsAndMinerals
       }
     });
   } catch (err) {
-    console.error(err);
+    console.error("Feil i /analyze:", err.message);
     res.status(500).json({ error: "Analyse mislyktes" });
   }
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Server lytter på port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Server kjører på http://localhost:${PORT}`);
+});
