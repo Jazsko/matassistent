@@ -1,81 +1,65 @@
-const express = require("express");
-const vision = require("@google-cloud/vision");
-const cors = require("cors");
-require("dotenv").config();
-process.env.GOOGLE_APPLICATION_CREDENTIALS = "/etc/secrets/service-account.json";
+import express from "express";
+import multer from "multer";
+import cors from "cors";
+import fs from "fs";
+import path from "path";
+import vision from "@google-cloud/vision";
+import OpenAI from "openai";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));
+const port = process.env.PORT || 10000;
 
-// ✅ Tillat Vercel-frontend å kontakte backend
-app.use(cors({
-  origin: "https://matassistent-frontend.vercel.app",
-  methods: ["POST"],
-  allowedHeaders: ["Content-Type"]
-}));
+app.use(cors());
+app.use(express.json());
 
-// ✅ Google Vision-klient
-const visionClient = new vision.ImageAnnotatorClient();
+const upload = multer({ dest: "uploads/" });
 
-// ✅ OpenAI-klient
-const OpenAI = require("openai");
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = new vision.ImageAnnotatorClient();
 
-// 🔍 Bildeanalyse-endepunkt
-app.post("/analyze", async (req, res) => {
-  const base64Image = req.body.image?.split(",")[1];
-
-  if (!base64Image) {
-    console.log("🚫 Ingen bilde mottatt");
-    return res.status(400).json({ error: "Ingen bilde mottatt" });
-  }
-
-  console.log("📸 Bilde mottatt – starter analyse...");
-
-  try {
-    const [result] = await visionClient.labelDetection({ image: { content: base64Image } });
-
-    const labels = result.labelAnnotations.map(label => label.description);
-    console.log("🔎 Vision labels:", labels);
-
-    const food = labels.find(l =>
-      l.match(/apple|banana|carrot|bread|salmon|rice|egg|potato|cheese|tomato|avocado|chicken|milk|yogurt/i)
-    ) || labels[0];
-
-    if (!food) {
-      console.log("🚫 Ingen matvare funnet i bilde");
-      return res.status(400).json({ error: "Ingen matvare identifisert" });
-    }
-
-    const prompt = `Hva er næringsinnholdet per 100g for ${food.toLowerCase()}, inkludert kalorier, proteiner, fett, karbohydrater? Hvilke vitaminer og mineraler finnes i denne matvaren, og hva bidrar de med i kroppen?`;
-
-    const completion = await openai.chat.completions.create({
-  model: "gpt-4",
-  messages: [{ role: "user", content: prompt }]
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-    console.log("✅ GPT-svar mottatt");
+const analyzeLabels = async (labels) => {
+  const prompt = `
+Du er en ernæringsassistent. Basert på følgende bildeetiketter: ${labels.join(', ')}, gi en kort beskrivelse av maten og et estimat på kalorier. Returner kun beskrivelsen og estimert kalorimengde, ikke noe annet.
+`;
 
-    res.json({
-      food,
-      nutrition: {
-        calories: 89,
-        protein: "1.1g",
-        fat: "0.3g",
-        carbs: "22.8g",
-        benefits: completion.data.choices[0].message.content,
-        details: [
-          { name: "Vitamin B6", function: "Støtter immunforsvaret og hjernen" },
-          { name: "Kalium", function: "Regulerer blodtrykk og væskebalanse" }
-        ]
-      }
-    });
-  } catch (err) {
-    console.error("❌ Feil i analyse:", err);
+  const response = await openai.chat.completions.create({
+    model: "gpt-3.5-turbo", // Endret fra gpt-4
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  return response.choices[0].message.content.trim();
+};
+
+app.post("/analyze", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Ingen fil lastet opp" });
+    }
+
+    const filePath = path.resolve(req.file.path);
+    const [result] = await client.labelDetection(filePath);
+    const labels = result.labelAnnotations.map(label => label.description);
+
+    console.log("🔎 Vision labels:", labels);
+
+    const response = await analyzeLabels(labels);
+
+    // Slett midlertidig bilde
+    fs.unlinkSync(filePath);
+
+    res.json({ result: response });
+  } catch (error) {
+    console.error("❌ Feil i analyse:", error);
     res.status(500).json({ error: "Analyse mislyktes" });
   }
 });
 
-// 🚀 Start server
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`✅ Server kjører på port ${PORT}`));
+app.listen(port, () => {
+  console.log(`✅ Server kjører på port ${port}`);
+});
